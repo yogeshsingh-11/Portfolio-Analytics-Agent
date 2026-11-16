@@ -61,7 +61,8 @@ class GeminiBackend:
             raise RuntimeError("GEMINI_API_KEY is not set (see .env.example).")
         self._types = types
         # 60s per-request timeout (ms) so a stalled call fails loudly instead of hanging forever
-        self.client = genai.Client(api_key=key, http_options=types.HttpOptions(timeout=60_000))
+        # self.client = genai.Client(api_key=key, http_options=types.HttpOptions(timeout=60_000))
+        self.client = genai.Client(api_key=key, http_options=types.HttpOptions(timeout=120_000))
         self.model = model or os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
 
     def thinking(self):
@@ -77,16 +78,20 @@ class GeminiBackend:
         finally:
             log.info("Gemini call took %.1fs", time.perf_counter() - t0)
 
+        RETRYABLE = ("429", "500", "502", "503", "504", "UNAVAILABLE", "DEADLINE_EXCEEDED",
+                 "RESOURCE_EXHAUSTED", "timed out", "Timeout", "ConnectError", "RemoteProtocolError")
+
     def _generate_with_retry(self, contents, config, model):
-        for attempt in range(4):  # retry transient rate-limit / overload errors
+        attempts = 5
+        for attempt in range(attempts):  # transient overload / timeout / rate-limit errors are retried
             try:
                 return self.client.models.generate_content(
                     model=model, contents=contents, config=config)
-            except Exception as exc:  # SDK raises APIError subclasses; keep this broad but narrow by message
-                msg = str(exc)
-                log.warning("Gemini call failed (attempt %d/4): %s", attempt + 1, msg[:300])
-                if attempt < 3 and any(c in msg for c in ("429", "500", "503", "UNAVAILABLE")):
-                    time.sleep(2 ** attempt)
+            except Exception as exc:  # SDK/httpx raise many types; classify by message
+                msg = f"{type(exc).__name__}: {exc}"
+                log.warning("Gemini call failed (attempt %d/%d): %s", attempt + 1, attempts, msg[:300])
+                if attempt < attempts - 1 and any(c in msg for c in self.RETRYABLE):
+                    time.sleep(3 * 2 ** attempt)  # 3s, 6s, 12s, 24s
                     continue
                 if "NOT_FOUND" in msg:
                     raise RuntimeError(
