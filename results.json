@@ -1,6 +1,6 @@
 {
   "backend": "gemini",
-  "passed": 5,
+  "passed": 6,
   "total": 10,
   "results": [
     {
@@ -10,7 +10,7 @@
       "routed": true,
       "correct": true,
       "detail": "exact match",
-      "latency_s": 16.01,
+      "latency_s": 9.9,
       "tools": [
         "sql_query"
       ],
@@ -24,7 +24,7 @@
       "routed": true,
       "correct": true,
       "detail": "exact match",
-      "latency_s": 6.71,
+      "latency_s": 37.87,
       "tools": [
         "sql_query"
       ],
@@ -36,14 +36,14 @@
       "type": "text2sql",
       "difficulty": "easy",
       "routed": true,
-      "correct": false,
-      "detail": "values differ",
-      "latency_s": 11.52,
+      "correct": true,
+      "detail": "match (columns reordered)",
+      "latency_s": 6.73,
       "tools": [
         "sql_query"
       ],
-      "sql": "SELECT T1.company_name, T1.symbol FROM securities AS T1 JOIN sectors AS T2 ON T1.sector_id = T2.sector_id WHERE T2.sector_name = 'Technology'",
-      "answer": "The following securities are in the Technology sector:\n\n| Company Name | Symbol |\n| :--- | :--- |\n| Apple Inc. | AAPL |\n| Microsoft Corporation | MSFT |\n| Alphabet Inc. | GOOGL |\n| Meta Platforms Inc. | META |\n| NVIDIA Corporation | NVDA |\n| Broadcom Inc. | AVGO |\n| Salesforce Inc. | CRM |\n| Oracle Corporation | ORCL |"
+      "sql": "SELECT T2.company_name AS name, T2.symbol FROM sectors AS T1 INNER JOIN securities AS T2 ON T1.sector_id = T2.sector_id WHERE T1.sector_name = 'Technology'",
+      "answer": "The following securities are in the Technology sector:\n\n| Name | Symbol |\n| :--- | :--- |\n| Apple Inc. | AAPL |\n| Microsoft Corporation | MSFT |\n| Alphabet Inc. | GOOGL |\n| Meta Platforms Inc. | META |\n| NVIDIA Corporation | NVDA |\n| Broadcom Inc. | AVGO |\n| Salesforce Inc. | CRM |\n| Oracle Corporation | ORCL |"
     },
     {
       "id": 4,
@@ -52,12 +52,12 @@
       "routed": true,
       "correct": true,
       "detail": "exact match",
-      "latency_s": 6.09,
+      "latency_s": 122.4,
       "tools": [
         "sql_query"
       ],
       "sql": "SELECT SUM(total_aum) FROM portfolios WHERE target_risk_level = 'High'",
-      "answer": "The total Assets Under Management (AUM) for portfolios with a high target risk level is $85,000,000."
+      "answer": "Sorry, something went wrong: 'GeminiBackend' object has no attribute 'RETRYABLE'"
     },
     {
       "id": 5,
@@ -65,8 +65,8 @@
       "difficulty": "medium",
       "routed": true,
       "correct": false,
-      "detail": "SQL failed: Tool error: 504 DEADLINE_EXCEEDED. {'error': {'code': 504, 'message': 'Deadline expired before operation could complete.', 'status': 'DEADLINE_EXCEEDED'}}",
-      "latency_s": 96.29,
+      "detail": "partial: values correct but only 2 of 5 expected columns returned",
+      "latency_s": 141.08,
       "tools": [
         "sql_query",
         "sql_query"
@@ -78,13 +78,15 @@
       "id": 6,
       "type": "text2sql",
       "difficulty": "medium",
-      "routed": false,
+      "routed": true,
       "correct": false,
-      "detail": "wrong routing: no tool",
-      "latency_s": 59.66,
-      "tools": [],
-      "sql": null,
-      "answer": "Sorry, something went wrong: 504 DEADLINE_EXCEEDED. {'error': {'code': 504, 'message': 'Deadline expired before operation could complete.', 'status': 'DEADLINE_EXCEEDED'}}"
+      "detail": "values differ",
+      "latency_s": 38.65,
+      "tools": [
+        "sql_query"
+      ],
+      "sql": "SELECT T2.sector_name AS sector, AVG(T1.current_price) AS average_price FROM securities AS T1 INNER JOIN sectors AS T2 ON T1.sector_id = T2.sector_id GROUP BY T2.sector_name",
+      "answer": "Here is the average current price of securities by sector:\n\n| Sector | Average Price |\n| :--- | :--- |\n| Automotive | 248.50 |\n| Consumer Discretionary | 3,380.00 |\n| Consumer Staples | 173.86 |\n| Energy | 128.58 |\n| Financials | 201.21 |\n| Healthcare | 285.17 |\n| Technology | 719.25 |"
     },
     {
       "id": 7,
@@ -92,13 +94,13 @@
       "difficulty": "hard",
       "routed": true,
       "correct": false,
-      "detail": "row count 11 != expected 8",
-      "latency_s": 39.57,
+      "detail": "row count 13 != expected 8",
+      "latency_s": 5.7,
       "tools": [
         "sql_query"
       ],
-      "sql": "SELECT p.portfolio_name, SUM(h.quantity * s.current_price) AS total_portfolio_value, SUM(CASE WHEN sec.sector_name = 'Technology' THEN h.quantity * s.current_price ELSE 0 END) AS tech_value, ROUND(100.0 * SUM(CASE WHEN sec.sector_name = 'Technology' THEN h.quantity * s.current_price ELSE 0 END) / SUM(h.quantity * s.current_price), 2) AS tech_percentage FROM portfolios p JOIN holdings h ON p.portfolio_id = h.portfolio_id JOIN securities s ON h.security_id = s.security_id JOIN sectors sec ON s.sector_id = sec.sector_id GROUP BY p.portfolio_name",
-      "answer": "Here is the total value of Technology sector holdings and its percentage of the total portfolio value for each portfolio:\n\n| Portfolio Name | Total Portfolio Value | Tech Sector Value | Tech % |\n| :--- | :--- | :--- | :--- |\n| Balanced Portfolio | $772,304 | $388,704 | 50.33% |\n| Conservative Income Fund | $891,920 | $0 | 0.00% |\n| Dividend Aristocrats Fund | $944,180 | $0 | 0.00% |\n| ESG Sustainable Fund | $1,007,228 | $272,978 | 27.10% |\n| Emerging Markets Fund | $1,045,100 | $339,095 | 32.45% |\n| Growth Equity Fund | $2,204,148 | $1,866,148 | 84.67% |\n| International Equity Fund | $734,928 | $346,888 | 47.20% |\n| Small Cap Value Fund | $758,085 | $0 | 0.00% |\n| Tech Innovation Fund | $1,565,292.50 | $1,565,292.50 | 100.00% |\n| Total International Index Fund | $2,281,686 | $1,427,086 | 62.55% |\n| Total Stock Market Index Fund | $6,622,340 | $3,093,520 | 46.71% |"
+      "sql": "SELECT p.portfolio_name, SUM(h.quantity * s.current_price) AS total_portfolio_value, SUM(CASE WHEN sec.sector_name = 'Technology' THEN h.quantity * s.current_price ELSE 0 END) AS tech_value, ROUND(100.0 * SUM(CASE WHEN sec.sector_name = 'Technology' THEN h.quantity * s.current_price ELSE 0 END) / SUM(h.quantity * s.current_price), 2) AS tech_percentage FROM portfolios p JOIN holdings h ON p.portfolio_id = h.portfolio_id JOIN securities s ON h.security_id = s.security_id LEFT JOIN sectors sec ON s.sector_id = sec.sector_id GROUP BY p.portfolio_id, p.portfolio_name",
+      "answer": "Here is the total value of Technology sector holdings and their percentage of the total portfolio value for each portfolio:\n\n| Portfolio Name | Total Portfolio Value | Tech Sector Value | Tech % |\n| :--- | :--- | :--- | :--- |\n| Growth Equity Fund | $2,204,148 | $1,866,148 | 84.67% |\n| Conservative Income Fund | $1,162,520 | $0 | 0.00% |\n| Tech Innovation Fund | $1,565,293 | $1,565,293 | 100.00% |\n| Balanced Portfolio | $1,073,279 | $388,704 | 36.22% |\n| ESG Sustainable Fund | $1,007,228 | $272,978 | 27.10% |\n| Small Cap Value Fund | $758,085 | $0 | 0.00% |\n| International Equity Fund | $734,928 | $346,888 | 47.20% |\n| Fixed Income Plus | $589,225 | $0 | 0.00% |\n| Dividend Aristocrats Fund | $944,180 | $0 | 0.00% |\n| Emerging Markets Fund | $1,045,100 | $339,095 | 32.45% |\n| Total Stock Market Index Fund | $6,622,340 | $3,093,520 | 46.71% |\n| Total Bond Market Index Fund | $999,625 | $0 | 0.00% |\n| Total International Index Fund | $2,281,686 | $1,427,086 | 62.55% |"
     },
     {
       "id": 8,
@@ -106,14 +108,14 @@
       "difficulty": "hard",
       "routed": true,
       "correct": false,
-      "detail": "values differ",
-      "latency_s": 66.85,
+      "detail": "partial: values correct but only 2 of 4 expected columns returned",
+      "latency_s": 7.02,
       "tools": [
         "sql_query",
         "exposure_calculator"
       ],
-      "sql": "SELECT T1.portfolio_name, COUNT(DISTINCT T3.sector_name) AS sector_count FROM portfolios AS T1 INNER JOIN holdings AS T2 ON T1.portfolio_id = T2.portfolio_id INNER JOIN securities AS T4 ON T2.security_id = T4.security_id INNER JOIN sectors AS T3 ON T4.sector_id = T3.sector_id GROUP BY T1.portfolio_name HAVING COUNT(DISTINCT T3.sector_name) > 5",
-      "answer": "Sorry, something went wrong: 504 DEADLINE_EXCEEDED. {'error': {'code': 504, 'message': 'Deadline expired before operation could complete.', 'status': 'DEADLINE_EXCEEDED'}}"
+      "sql": "SELECT p.portfolio_name, COUNT(DISTINCT s.sector_id) AS sector_count FROM portfolios p JOIN holdings h ON p.portfolio_id = h.portfolio_id JOIN securities s ON h.security_id = s.security_id WHERE s.sector_id IS NOT NULL GROUP BY p.portfolio_name HAVING COUNT(DISTINCT s.sector_id) > 5",
+      "answer": "The following portfolio has holdings in more than 5 different sectors:\n\n**Portfolio:** Total Stock Market Index Fund (6 sectors)\n\n### Diversification Metrics (Sector Exposure)\n*Note: Percentages are normalized to the equity sleeve.*\n\n| Sector | Exposure (%) |\n| :--- | :--- |\n| Technology | 48.98% |\n| Healthcare | 16.33% |\n| Financials | 14.29% |\n| Consumer Discretionary | 10.20% |\n| Automotive | 6.12% |\n| Consumer Staples | 4.08% |"
     },
     {
       "id": 9,
@@ -122,7 +124,7 @@
       "routed": true,
       "correct": true,
       "detail": "numbers match reference",
-      "latency_s": 3.6,
+      "latency_s": 3.18,
       "tools": [
         "exposure_calculator"
       ],
@@ -136,7 +138,7 @@
       "routed": true,
       "correct": true,
       "detail": "numbers match reference",
-      "latency_s": 3.37,
+      "latency_s": 75.14,
       "tools": [
         "exposure_calculator"
       ],
