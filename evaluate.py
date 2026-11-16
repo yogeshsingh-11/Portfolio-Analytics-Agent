@@ -43,27 +43,49 @@ def _key(row):
     return tuple((0, v) if isinstance(v, (int, float)) else (1, str(v)) for v in row)
 
 
+def _col(rows, i):
+    return sorted(_key((r[i],)) for r in rows)
+
+
+def _match_cols(src, dst):
+    """For every column of `src` find a distinct column of `dst` holding the same values, else None."""
+    mapping, used = [], set()
+    for i in range(len(src[0])):
+        want = _col(src, i)
+        j = next((j for j in range(len(dst[0])) if j not in used and _col(dst, j) == want), None)
+        if j is None:
+            return None
+        mapping.append(j); used.add(j)
+    return mapping
+
+
+def _rows_equal(a, b, ordered):
+    return a == b if ordered else sorted(a, key=_key) == sorted(b, key=_key)
+
+
 def compare_results(expected_rows, actual_rows, ordered: bool) -> tuple[bool, str]:
+    """Execution-accuracy comparison. Returns (passed, detail).
+
+    Column order and extra columns are tolerated. If the agent returns only a subset of the
+    reference columns (all with correct values) the result is NOT a pass; the detail starts
+    with 'partial' so the report can show it separately from real failures.
+    """
     exp, act = _norm_rows(expected_rows), _norm_rows(actual_rows)
-    if not ordered:
-        exp, act = sorted(exp, key=_key), sorted(act, key=_key)
-    if exp == act:
-        return True, "exact match"
     if len(exp) != len(act):
         return False, f"row count {len(act)} != expected {len(exp)}"
     if not exp:
         return True, "both empty"
-    # Tolerate extra columns: find, for every expected column, an actual column holding the same values.
-    n_exp, n_act = len(exp[0]), len(act[0]) if act else 0
-    if n_act > n_exp:
-        mapping, used = [], set()
-        for i in range(n_exp):
-            col = [r[i] for r in exp]
-            match = next((j for j in range(n_act) if j not in used and [r[j] for r in act] == col), None)
-            if match is None:
-                return False, "values differ"
-            mapping.append(match); used.add(match)
-        return True, f"match with {n_act - n_exp} extra column(s)"
+    ne, na = len(exp[0]), len(act[0])
+    if na >= ne:
+        m = _match_cols(exp, act)
+        if m is not None and _rows_equal(exp, [tuple(r[j] for j in m) for r in act], ordered):
+            if na == ne and m == list(range(ne)):
+                return True, "exact match"
+            return True, "match (columns reordered)" if na == ne else f"match with {na - ne} extra column(s)"
+    else:
+        m = _match_cols(act, exp)
+        if m is not None and _rows_equal(act, [tuple(r[j] for j in m) for r in exp], ordered):
+            return False, f"partial: values correct but only {na} of {ne} expected columns returned"
     return False, "values differ"
 
 
@@ -86,7 +108,9 @@ def eval_sql(q, resp, ref_conn):
     gt = q["ground_truth"]
     if SQL_TOOL not in resp.tools_used:
         return False, False, f"wrong routing: {resp.tools_used or 'no tool'}"
-    trace = next(t for t in resp.traces if t.name == SQL_TOOL)
+    sql_traces = [t for t in resp.traces if t.name == SQL_TOOL]
+    # grade the agent's final attempt: the last successful query, else the last one made
+    trace = next((t for t in reversed(sql_traces) if t.result.get("ok")), sql_traces[-1])
     if not trace.result.get("ok"):
         return True, False, f"SQL failed: {trace.result.get('error')}"
     cur = ref_conn.execute(gt["sql_query"].rstrip(";"))
@@ -100,7 +124,8 @@ def eval_exposure(q, resp):
     gt = q["ground_truth"]
     if gt["tool_name"] not in resp.tools_used:
         return False, False, f"wrong routing: {resp.tools_used or 'no tool'}"
-    trace = next(t for t in resp.traces if t.name == EXPOSURE_TOOL)
+    exp_traces = [t for t in resp.traces if t.name == EXPOSURE_TOOL]
+    trace = next((t for t in reversed(exp_traces) if t.result.get("ok")), exp_traces[-1])
     res = trace.result
     if not res.get("ok"):
         return True, False, f"tool error: {res.get('error')}"
@@ -142,19 +167,28 @@ def main() -> int:
                         "latency_s": resp.latency_s, "tools": resp.tools_used,
                         "sql": next((t.result.get("sql") for t in resp.traces if t.result.get("sql")), None),
                         "answer": resp.answer})
-        mark = "PASS" if correct else "FAIL"
+        mark = "PASS" if correct else ("PART" if why.startswith("partial") else "FAIL")
         print(f"[{mark}] Q{q['id']:<2} {q['type']:<20} {q['difficulty']:<6} {resp.latency_s:>5}s  {why}")
         if not correct and args.verbose:
             print(f"        sql: {results[-1]['sql']}")
 
     n = len(results)
     passed = sum(r["correct"] for r in results)
-    print(f"\nOverall: {passed}/{n} correct | routing {sum(r['routed'] for r in results)}/{n}")
+    partial = sum(r["detail"].startswith("partial") for r in results)
+    print(f"\nOverall: {passed}/{n} correct | routing {sum(r['routed'] for r in results)}/{n}"
+          + (f" | {partial} partial (right values, missing columns)" if partial else ""))
     by = defaultdict(lambda: [0, 0])
     for r in results:
         for k in (r["type"], r["difficulty"]):
             by[k][0] += r["correct"]; by[k][1] += 1
     print("Breakdown: " + ", ".join(f"{k} {a}/{b}" for k, (a, b) in sorted(by.items())))
+    failed = [r for r in results if not r["correct"]]
+    if failed:
+        print("\nFailures:")
+        for r in failed:
+            print(f"  Q{r['id']} ({r['type']}, {r['difficulty']}): {r['detail']}")
+            if r["sql"]:
+                print("     sql: " + " ".join(r["sql"].split()))
     if args.json:
         (ROOT / args.json).write_text(json.dumps({"backend": backend.name, "passed": passed,
                                                     "total": n, "results": results}, indent=2, default=str))
