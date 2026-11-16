@@ -26,7 +26,15 @@ AGENT_SYSTEM = f"""You are a portfolio analytics assistant. Answer the user's qu
 
 SQL_SYSTEM = """You translate questions into ONE read-only SQLite query.
 Return ONLY the SQL, no explanation, no markdown fences. Use only the tables and columns below,
-exact category spellings, and explicit JOINs. Prefer readable column aliases."""
+exact category spellings, and explicit JOINs. Prefer readable column aliases.
+
+Quality rules:
+- Bonds have NULL sector_id, so an INNER JOIN to sectors silently drops them. For portfolio-level
+  TOTALS (total value, holding counts) do not join sectors, or use LEFT JOIN, so bonds stay counted.
+- When listing entities, include their identifying columns (id/symbol AND name) plus every
+  value the question asks for. When asked for "metrics", return the underlying counts as well as
+  any derived ratio or percentage.
+- Return only what is asked: no unrelated columns, and no extra filtering the question does not imply."""
 
 
 @dataclass
